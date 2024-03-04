@@ -24,7 +24,7 @@ final class SuiteTagsExtension implements Extension
 
     public function getConfigKey(): string
     {
-        return 'nrm_suite_tags';
+        return 'sylius_labs_suite_tags';
     }
 
     public function initialize(ExtensionManager $extensionManager): void

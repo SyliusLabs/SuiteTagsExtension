@@ -1,6 +1,6 @@
 # Suite Tags Extension
 
-Adds the `--suite-tags` option to Behat CLI, which allows to run suites configured with specific tags.
+Adds the `--suite-tags` option to Behat CLI, which isolates loaded suites and contexts to those specified. Functionally works similarly to the `--tags` option, but provides better isolation.
 
 ## Usage
 
