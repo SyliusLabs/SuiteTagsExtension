@@ -36,6 +36,7 @@ final class FilteredTagsSuiteController implements Controller
 
     public function execute(InputInterface $input, OutputInterface $output): ?int
     {
+        /** @var string[] $tags */
         $tags = $input->getOption('suite-tags');
         if (empty($tags) || !isset($tags[0]) || empty(trim($tags[0]))) {
             return null;
@@ -48,6 +49,7 @@ final class FilteredTagsSuiteController implements Controller
 
     private function processSuitesIsolation(string $inputTags): void
     {
+        /** @var array<string, string[]> $config */
         foreach ($this->registry->getSuitesConfigurations() as $name => [$type, $config]) {
             if (isset($config['filters']['tags'])) {
                 $suiteTags = array_map(
@@ -66,7 +68,11 @@ final class FilteredTagsSuiteController implements Controller
         }
     }
 
-    /** @see TagFilter::isTagsMatchCondition() */
+    /**
+     * @see TagFilter::isTagsMatchCondition()
+     *
+     * @param string[] $suiteTags
+     */
     private function isTagsMatchCondition(array $suiteTags, string $inputTagsString): bool
     {
         $satisfies = true;

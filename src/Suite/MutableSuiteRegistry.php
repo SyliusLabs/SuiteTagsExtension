@@ -15,10 +15,13 @@ final class MutableSuiteRegistry implements MutableSuiteRepositoryInterface
 {
     private bool $suitesGenerated = false;
 
+    /** @var SuiteGenerator[] */
     private array $generators = [];
 
+    /** @var array<string, array{0: string|null, 1: array<string, string[]>}> */
     private array $suiteConfigurations = [];
 
+    /** @var Suite[] */
     private array $suites = [];
 
     public function registerSuiteGenerator(SuiteGenerator $generator): void
@@ -27,19 +30,21 @@ final class MutableSuiteRegistry implements MutableSuiteRepositoryInterface
         $this->suitesGenerated = false;
     }
 
-    public function registerSuiteConfiguration($name, $type, array $settings): void
+    /** @param array<string, string[]> $settings */
+    public function registerSuiteConfiguration(string $name, ?string $type, array $settings): void
     {
         if (isset($this->suiteConfigurations[$name])) {
             throw new SuiteConfigurationException(sprintf(
                 'Suite configuration for a suite "%s" is already registered.',
-                $name
+                $name,
             ), $name);
         }
 
-        $this->suiteConfigurations[$name] = array($type, $settings);
+        $this->suiteConfigurations[$name] = [$type, $settings];
         $this->suitesGenerated = false;
     }
 
+    /** @return array<string, array{0: string|null, 1: array<string, string[]>}> */
     public function getSuitesConfigurations(): array
     {
         return $this->suiteConfigurations;
@@ -58,7 +63,7 @@ final class MutableSuiteRegistry implements MutableSuiteRepositoryInterface
             return $this->suites;
         }
 
-        $this->suites = array();
+        $this->suites = [];
         foreach ($this->suiteConfigurations as $name => $configuration) {
             [$type, $settings] = $configuration;
 
@@ -70,8 +75,12 @@ final class MutableSuiteRegistry implements MutableSuiteRepositoryInterface
         return $this->suites;
     }
 
-    /** @throws SuiteGenerationException */
-    private function generateSuite($name, $type, array $settings): Suite
+    /**
+     * @param array<string, string[]> $settings
+     *
+     * @throws SuiteGenerationException
+     */
+    private function generateSuite(string $name, ?string $type, array $settings): Suite
     {
         foreach ($this->generators as $generator) {
             if (!$generator->supportsTypeAndSettings($type, $settings)) {
@@ -84,7 +93,7 @@ final class MutableSuiteRegistry implements MutableSuiteRepositoryInterface
         throw new SuiteGenerationException(sprintf(
             'Can not find suite generator for a suite `%s` of type `%s`.',
             $name,
-            $type
+            $type,
         ), $name);
     }
 }
