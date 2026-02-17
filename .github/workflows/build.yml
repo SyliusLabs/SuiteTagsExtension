@@ -7,20 +7,59 @@ on:
     release:
         types: [created]
     schedule:
-        -
-            cron: "0 1 * * 6" # Run at 1am every Saturday
+        - cron: "0 1 * * 6" # Run at 1am every Saturday
 
 jobs:
     tests:
         runs-on: ubuntu-latest
-        name: "Tests - PHP ${{ matrix.php }}"
+        name: "Tests - PHP ${{ matrix.php }}, Symfony ${{ matrix.symfony }}, Behat ${{ matrix.behat }}, deps ${{ matrix.dependencies }}"
         strategy:
             fail-fast: false
             matrix:
-                php: ["7.4", "8.0", "8.1", "8.2", "8.3"]
+                php: ["8.2", "8.3", "8.4"]
+                symfony: ["^5.4", "^6.4", "^7.4", "^8.0"]
+                behat: ["^3.10", "4.x-dev"]
+                dependencies: ["lowest", "highest"]
+                exclude:
+                    -
+                        php: "8.4"
+                        symfony: "^5.4"
+                    -
+                        symfony: "^5.4"
+                        behat: "4.x-dev"
+                    -
+                        php: "8.2"
+                        symfony: "^8.0"
+                    -
+                        php: "8.3"
+                        symfony: "^8.0"
+                    -
+                        symfony: "^8.0"
+                        behat: "^3.10"
+                include:
+                    -
+                        php: "8.0"
+                        symfony: "^5.4"
+                        behat: "^3.10"
+                        dependencies: "lowest"
+                    -
+                        php: "8.0"
+                        symfony: "^5.4"
+                        behat: "^3.10"
+                        dependencies: "highest"
+                    -
+                        php: "8.1"
+                        symfony: "^5.4"
+                        behat: "^3.10"
+                        dependencies: "lowest"
+                    -
+                        php: "8.1"
+                        symfony: "^5.4"
+                        behat: "^3.10"
+                        dependencies: "highest"
 
         steps:
-            -   uses: actions/checkout@v4
+            -   uses: actions/checkout@v6
 
             -   name: Setup PHP
                 uses: shivammathur/setup-php@v2
@@ -28,10 +67,23 @@ jobs:
                     php-version: "${{ matrix.php }}"
                     coverage: none
 
+            -   name: Restrict Symfony version
+                if: matrix.symfony != ''
+                run: |
+                    composer global require --no-progress --no-scripts --no-plugins "symfony/flex"
+                    composer global config --no-plugins allow-plugins.symfony/flex true
+                    composer config extra.symfony.require "${{ matrix.symfony }}"
+                    composer config minimum-stability "dev"
+                    composer config prefer-stable true
+
+            -   name: Restrict Behat version
+                run: composer require --no-update "behat/behat:${{ matrix.behat }}"
+
             -   name: Install dependencies
-                run: composer update
+                run: composer update ${{ matrix.dependencies == 'lowest' && '--prefer-lowest --prefer-stable' || '' }}
 
             -   name: Run analysis
+                if: matrix.behat != '4.x-dev'
                 run: composer validate --strict
 
             -   name: Run static checks
@@ -39,36 +91,3 @@ jobs:
 
             -   name: Run tests
                 run: vendor/bin/behat --strict -vvv --no-interaction
-
-    unstable:
-        runs-on: ubuntu-latest
-        name: "Unstable - PHP ${{ matrix.php }}, Behat ${{ matrix.behat }}"
-        needs: tests
-        strategy:
-            fail-fast: false
-            matrix:
-                php: ["8.2"] # 8.3 is for now unavailable in Behat 4
-                behat: ["4.x-dev"]
-
-        steps:
-            -   uses: actions/checkout@v4
-
-            -   name: Setup PHP
-                uses: shivammathur/setup-php@v2
-                with:
-                    php-version: "${{ matrix.php }}"
-                    coverage: none
-
-            -   name: Install dependencies
-                run: composer update --with="behat/behat:${{ matrix.behat }}"
-
-            -   name: Run analysis
-                run: composer validate --strict
-
-            -   name: Run static checks
-                run: vendor/bin/phpstan analyse --no-progress --no-interaction
-                continue-on-error: true
-
-            -   name: Run tests
-                run: vendor/bin/behat --strict -vvv --no-interaction
-                continue-on-error: true

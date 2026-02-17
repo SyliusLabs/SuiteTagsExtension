@@ -5,35 +5,27 @@ declare(strict_types=1);
 namespace Tests\SyliusLabs\SuiteTagsExtension\Behat\Context;
 
 use Behat\Behat\Context\Context;
+use Behat\Hook\AfterScenario;
+use Behat\Hook\BeforeFeature;
+use Behat\Hook\BeforeScenario;
+use Behat\Step\Given;
+use Behat\Step\When;
+use Behat\Step\Then;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Process\PhpExecutableFinder;
 use Symfony\Component\Process\Process;
 
 final class TestContext implements Context
 {
-    /**
-     * @var string
-     */
-    private static $workingDir;
+    private static string $workingDir;
 
-    /**
-     * @var Filesystem
-     */
-    private static $filesystem;
+    private static Filesystem $filesystem;
 
-    /**
-     * @var string
-     */
-    private static $phpBin;
+    private static string $phpBin;
 
-    /**
-     * @var Process
-     */
-    private $process;
+    private ?Process $process = null;
 
-    /**
-     * @BeforeFeature
-     */
+    #[BeforeFeature]
     public static function beforeFeature(): void
     {
         self::$workingDir = sprintf('%s/%s/', sys_get_temp_dir(), uniqid('', true));
@@ -41,186 +33,115 @@ final class TestContext implements Context
         self::$phpBin = self::findPhpBinary();
     }
 
-    /**
-     * @BeforeScenario
-     */
+    #[BeforeScenario]
     public function beforeScenario(): void
     {
         self::$filesystem->remove(self::$workingDir);
         self::$filesystem->mkdir(self::$workingDir, 0777);
     }
 
-    /**
-     * @AfterScenario
-     */
+    #[AfterScenario]
     public function afterScenario(): void
     {
         self::$filesystem->remove(self::$workingDir);
     }
 
-    /**
-     * @Given /^a Behat configuration containing(?: "([^"]+)"|:)$/
-     */
-    public function thereIsConfiguration($content): void
+    #[Given('/^a Behat configuration containing(?: "([^"]+)"|:)$/')]
+    public function thereIsConfiguration(?string $content): void
     {
+        if (self::isBehat4()) {
+            $this->thereIsFile('behat.php', sprintf(
+                <<<'PHP'
+<?php
+
+declare(strict_types=1);
+
+use Symfony\Component\Yaml\Yaml;
+
+return new class implements \Behat\Config\ConfigInterface {
+    public function toArray(): array
+    {
+        $config = Yaml::parse(%s);
+
+        foreach ($config as &$profile) {
+            if (!is_array($profile) || !isset($profile['extensions'])) {
+                continue;
+            }
+
+            $resolved = [];
+            foreach ($profile['extensions'] as $name => $extensionConfig) {
+                $resolved[$this->resolveExtensionClassName($name)] = $extensionConfig;
+            }
+            $profile['extensions'] = $resolved;
+        }
+
+        return $config;
+    }
+
+    private function resolveExtensionClassName(string $name): string
+    {
+        if (class_exists($name)) {
+            return $name;
+        }
+
+        $parts = explode('\\', $name);
+        $last = preg_replace('/Extension$/', '', end($parts)) . 'Extension';
+        $guessed = $name . '\\ServiceContainer\\' . $last;
+
+        if (class_exists($guessed)) {
+            return $guessed;
+        }
+
+        return $name;
+    }
+};
+PHP,
+                var_export((string) $content, true),
+            ));
+
+            return;
+        }
+
         $this->thereIsFile('behat.yml', $content);
     }
 
-    /**
-     * @Given /^a (?:.+ |)file "([^"]+)" containing(?: "([^"]+)"|:)$/
-     */
-    public function thereIsFile($file, $content): void
+    #[Given('/^a (?:.+ |)file "([^"]+)" containing(?: "([^"]+)"|:)$/')]
+    public function thereIsFile(?string $file, ?string $content): void
     {
         self::$filesystem->dumpFile(self::$workingDir . '/' . $file, (string) $content);
     }
 
-    /**
-     * @Given /^a feature file containing(?: "([^"]+)"|:)$/
-     */
-    public function thereIsFeatureFile($content): void
+    #[Given('/^a feature file containing(?: "([^"]+)"|:)$/')]
+    public function thereIsFeatureFile(?string $content): void
     {
         $this->thereIsFile(sprintf('features/%s.feature', md5(uniqid('', true))), $content);
     }
 
-    /**
-     * @Given /^a feature file with passing scenario$/
-     */
-    public function thereIsFeatureFileWithPassingScenario(): void
-    {
-        $this->thereIsFile('features/bootstrap/FeatureContext.php', <<<CON
-<?php
-
-declare(strict_types=1);
-
-class FeatureContext implements \Behat\Behat\Context\Context
-{
-    /** @Then it passes */
-    public function itPasses() {}
-}
-CON
-        );
-
-        $this->thereIsFeatureFile(<<<FEA
-Feature: Passing feature
-
-    Scenario: Passing scenario
-        Then it passes
-FEA
-        );
-    }
-
-    /**
-     * @Given /^a feature file with failing scenario$/
-     */
-    public function thereIsFeatureFileWithFailingScenario(): void
-    {
-        $this->thereIsFile('features/bootstrap/FeatureContext.php', <<<CON
-<?php
-
-declare(strict_types=1);
-
-class FeatureContext implements \Behat\Behat\Context\Context
-{
-    /** @Then it fails */
-    public function itFails() { throw new \RuntimeException(); }
-}
-CON
-        );
-
-        $this->thereIsFeatureFile(<<<FEA
-Feature: Failing feature
-
-    Scenario: Failing scenario
-        Then it fails
-FEA
-        );
-    }
-
-    /**
-     * @Given /^a feature file with scenario with missing step$/
-     */
-    public function thereIsFeatureFileWithScenarioWithMissingStep(): void
-    {
-        $this->thereIsFile('features/bootstrap/FeatureContext.php', <<<CON
-<?php
-
-declare(strict_types=1); 
-
-class FeatureContext implements \Behat\Behat\Context\Context {}
-CON
-        );
-
-        $this->thereIsFeatureFile(<<<FEA
-Feature: Feature with missing step
-
-    Scenario: Scenario with missing step
-        Then it does not have this step
-FEA
-        );
-    }
-
-    /**
-     * @Given /^a feature file with scenario with pending step$/
-     */
-    public function thereIsFeatureFileWithScenarioWithPendingStep(): void
-    {
-        $this->thereIsFile('features/bootstrap/FeatureContext.php', <<<CON
-<?php
-
-declare(strict_types=1);
-
-class FeatureContext implements \Behat\Behat\Context\Context 
-{
-    /** @Then it has this step as pending */
-    public function itFails() { throw new \Behat\Behat\Tester\Exception\PendingException(); }
-}
-CON
-        );
-
-        $this->thereIsFeatureFile(<<<FEA
-Feature: Feature with pending step
-
-    Scenario: Scenario with pending step
-        Then it has this step as pending
-FEA
-        );
-    }
-
-    /**
-     * @When /^I run Behat$/
-     */
+    #[When('/^I run Behat$/')]
     public function iRunBehat(): void
     {
         $this->runBehat();
     }
 
-    /**
-     * @When /^I run Behat with suites? "([^"]+)"$/
-     */
+    #[When('/^I run Behat with suite "([^"]+)"$/')]
     public function iRunBehatWithSuite(string $suite): void
     {
         $this->runBehat([sprintf('--suite=%s', $suite)]);
     }
 
-    /**
-     * @When /^I run Behat with tags? "([^"]+)"$/
-     */
+    #[When('/^I run Behat with tags? "([^"]+)"$/')]
     public function iRunBehatWithTag(string $tag): void
     {
         $this->runBehat([sprintf('--tags=%s', $tag)]);
     }
 
-    /**
-     * @When /^I run Behat with suite tags? "([^"]+)"$/
-     */
+    #[When('/^I run Behat with suite tags? "([^"]+)"$/')]
     public function iRunBehatWithSuiteTag(string $tag): void
     {
         $this->runBehat([sprintf('--suite-tags=%s', $tag)]);
     }
 
-    /**
-     * @Then /^it should pass$/
-     */
+    #[Then('/^it should pass$/')]
     public function itShouldPass(): void
     {
         if (0 === $this->getProcessExitCode()) {
@@ -232,18 +153,14 @@ FEA
         );
     }
 
-    /**
-     * @Then /^it should pass with(?: "([^"]+)"|:)$/
-     */
-    public function itShouldPassWith($expectedOutput): void
+    #[Then('/^it should pass with(?: "([^"]+)"|:)$/')]
+    public function itShouldPassWith(?string $expectedOutput): void
     {
         $this->itShouldPass();
-        $this->assertOutputMatches((string) $expectedOutput);
+        $this->assertOutputMatches($expectedOutput);
     }
 
-    /**
-     * @Then /^it should fail$/
-     */
+    #[Then('/^it should fail$/')]
     public function itShouldFail(): void
     {
         if (0 !== $this->getProcessExitCode()) {
@@ -255,52 +172,45 @@ FEA
         );
     }
 
-    /**
-     * @Then /^it should fail with(?: "([^"]+)"|:)$/
-     */
-    public function itShouldFailWith($expectedOutput): void
+    #[Then('/^it should fail with(?: "([^"]+)"|:)$/')]
+    public function itShouldFailWith(?string $expectedOutput): void
     {
         $this->itShouldFail();
-        $this->assertOutputMatches((string) $expectedOutput);
+        $this->assertOutputMatches($expectedOutput);
     }
 
-    /**
-     * @Then /^it should end with(?: "([^"]+)"|:)$/
-     */
-    public function itShouldEndWith($expectedOutput): void
+    #[Then('/^it should end with(?: "([^"]+)"|:)$/')]
+    public function itShouldEndWith(?string $expectedOutput): void
     {
-        $this->assertOutputMatches((string) $expectedOutput);
+        $this->assertOutputMatches($expectedOutput);
     }
 
-    /**
-     * @Then /^its output should contain(?: "([^"]+)"|:)$/
-     */
+    #[Then('/^its output should contain(?: "([^"]+)"|:)$/')]
     public function itsOutputShouldContain(string $expectedOutput): void
     {
         $this->assertOutputMatches($expectedOutput);
     }
 
-    /**
-     * @Then /^it should have run (\d+) scenarios?$/
-     */
+    #[Then('/^it should have run (\d+) scenarios?$/')]
     public function itShouldHaveRunCountScenarios(int $count): void
     {
         $this->assertOutputMatches(sprintf('%d scenario', $count));
     }
 
+    /** @param array<array-key, mixed> $arguments */
     private function runBehat(array $arguments = []): void
     {
         $arguments = array_merge(['--strict', '-vvv', '--no-interaction', '--lang=en'], $arguments);
 
-        /** @psalm-suppress UndefinedConstant */
+        /** @phpstan-ignore-next-line */
         $this->process = new Process(array_merge([self::$phpBin, BEHAT_BIN_PATH], $arguments), self::$workingDir);
         $this->process->start();
         $this->process->wait();
     }
 
-    private function assertOutputMatches(string $expectedOutput): void
+    private function assertOutputMatches(?string $expectedOutput): void
     {
-        $pattern = '/' . preg_quote($expectedOutput, '/') . '/sm';
+        $pattern = '/' . preg_quote($expectedOutput ?? '', '/') . '/sm';
         $output = $this->getProcessOutput();
 
         $result = preg_match($pattern, $output);
@@ -321,14 +231,14 @@ FEA
     {
         $this->assertProcessIsAvailable();
 
-        return $this->process->getErrorOutput() . $this->process->getOutput();
+        return sprintf('%s%s', $this->process?->getErrorOutput(), $this->process?->getOutput());
     }
 
     private function getProcessExitCode(): int
     {
         $this->assertProcessIsAvailable();
 
-        return $this->process->getExitCode();
+        return $this->process?->getExitCode() ?? -1;
     }
 
     /** @throws \BadMethodCallException */
@@ -348,5 +258,10 @@ FEA
         }
 
         return $phpBinary;
+    }
+
+    private static function isBehat4(): bool
+    {
+        return class_exists(\Behat\Config\Config::class);
     }
 }

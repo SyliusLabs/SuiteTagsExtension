@@ -35,6 +35,7 @@ final class SuiteTagsExtension implements Extension
     {
     }
 
+    /** @param array<array-key, mixed> $config */
     public function load(ContainerBuilder $container, array $config): void
     {
         $this->overwriteSuiteRegistry($container);

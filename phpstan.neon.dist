@@ -1,7 +1,12 @@
 parameters:
-    level: 7
+    level: max
 
     reportUnmatchedIgnoredErrors: false
+    treatPhpDocTypesAsCertain: false
 
     paths:
         - 'src/'
+
+    ignoreErrors:
+        - '/Parameter \#1 \$type of method Behat\\Testwork\\Suite\\Generator\\SuiteGenerator\:\:supportsTypeAndSettings\(\) expects string, string\|null given\./'
+        - '/Method SyliusLabs\\SuiteTagsExtension\\ServiceContainer\\SuiteTagsExtension\:\:configure\(\) has parameter \$builder with generic class Symfony\\Component\\Config\\Definition\\Builder\\ArrayNodeDefinition but does not specify its types\: TParent/'
