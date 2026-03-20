@@ -31,9 +31,7 @@ Feature: Not using isolation runs suites as normal
         {
             protected $property = 'first';
 
-            /**
-             * @When I get the property
-             */
+            #[\Behat\Step\When('I get the property')]
             public function iGetTheProperty()
             {
                 printf('property value: %s', $this->property);
